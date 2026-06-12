@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UWB Calibration System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#080c10;--bg2:#0d1219;--bg3:#111820;--border:#1e2d3d;--accent:#00d4ff;
+      --accent2:#00ff9d;--warn:#ff9d00;--danger:#ff3d5a;--text:#c8dae8;--muted:#4a6070;
+      --purple:#a78bfa;--mono:'Share Tech Mono',monospace;--sans:'Barlow',sans-serif}
+    body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;
+      display:grid;grid-template-rows:48px 1fr;grid-template-columns:1fr 300px;
+      gap:1px;background-color:var(--border);overflow:hidden}
+    header{grid-column:1/-1;background:var(--bg2);display:flex;align-items:center;
+      padding:0 20px;gap:12px;border-bottom:1px solid var(--border)}
+    .logo{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:3px;text-transform:uppercase}
+    .logo span{color:var(--muted)}
+    .tabs{display:flex;gap:2px;margin-left:24px}
+    .tab{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+      padding:6px 16px;border-radius:4px 4px 0 0;background:transparent;
+      border:1px solid transparent;border-bottom:none;color:var(--muted);cursor:pointer;transition:all .2s}
+    .tab:hover{color:var(--text)}
+    .tab.active{background:var(--bg);color:var(--accent);border-color:var(--border)}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .3s;flex-shrink:0}
+    .status-dot.live{background:var(--accent2);box-shadow:0 0 8px var(--accent2);animation:pulse 2s infinite}
+    .status-dot.stale{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+    #status-text{font-family:var(--mono);font-size:11px;color:var(--muted)}
+    .header-right{margin-left:auto;display:flex;gap:16px;align-items:center}
+    .hstat .val{font-family:var(--mono);font-size:14px;color:var(--accent)}
+    .hstat .lbl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+    #map-wrap{background:var(--bg);position:relative;overflow:hidden}
+    canvas{display:block}
+    #map-wrap::before{content:'';position:absolute;inset:0;
+      background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);
+      background-size:40px 40px;opacity:.35;pointer-events:none}
+    .bracket{position:absolute;width:20px;height:20px;border-color:var(--accent);border-style:solid;opacity:.5}
+    .bracket.tl{top:12px;left:12px;border-width:1px 0 0 1px}
+    .bracket.tr{top:12px;right:12px;border-width:1px 1px 0 0}
+    .bracket.bl{bottom:12px;left:12px;border-width:0 0 1px 1px}
+    .bracket.br{bottom:12px;right:12px;border-width:0 1px 1px 0}
+
+    aside{background:var(--bg2);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+    .panel{border-bottom:1px solid var(--border);padding:14px 16px}
+    .panel-title{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+    .coord-row{display:flex;align-items:baseline;gap:6px;margin-bottom:6px}
+    .coord-axis{font-family:var(--mono);font-size:11px;color:var(--muted);width:14px}
+    .coord-val{font-family:var(--mono);font-size:26px;color:var(--accent);line-height:1;letter-spacing:-1px}
+    .coord-unit{font-size:11px;color:var(--muted)}
+    .anchor-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .anchor-id{font-family:var(--mono);font-size:10px;color:var(--bg);background:var(--warn);border-radius:3px;padding:1px 5px;flex-shrink:0}
+    .anchor-dist-bar{flex:1;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden}
+    .anchor-dist-fill{height:100%;background:var(--warn);border-radius:2px;transition:width .3s}
+    .anchor-dist-val{font-family:var(--mono);font-size:12px;color:var(--text);min-width:52px;text-align:right}
+    .btn{font-family:var(--mono);font-size:11px;letter-spacing:1px;padding:5px 10px;border-radius:3px;
+      border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;transition:all .2s;text-transform:uppercase}
+    .btn:hover{border-color:var(--accent);color:var(--accent)}
+    .btn.active{border-color:var(--accent2);color:var(--accent2)}
+    .btn.primary{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
+    .btn.primary:hover{background:rgba(0,212,255,.15)}
+    .btn.danger{border-color:var(--danger);color:var(--danger)}
+    .btn.danger:hover{background:rgba(255,61,90,.1)}
+    .btn.success{border-color:var(--accent2);color:var(--accent2)}
+    .btn.success:hover{background:rgba(0,255,157,.1)}
+    .btn:disabled{opacity:.3;cursor:not-allowed}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .input{background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text);
+      font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none;transition:border-color .2s;width:100%}
+    .input:focus{border-color:var(--accent)}
+    .ws-row{display:flex;gap:6px;margin-top:8px}
+    .ws-row .input{flex:1}
+    .progress-wrap{margin:8px 0}
+    .progress-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+    .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width .15s;width:0%}
+    .progress-label{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;display:flex;justify-content:space-between}
+    .disc-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+    .disc-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+    .disc-dot.found{background:var(--accent2);box-shadow:0 0 6px var(--accent2)}
+    .disc-label{font-family:var(--mono);font-size:11px;color:var(--text)}
+    .disc-ip{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
+    .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .result-box{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:8px 10px}
+    .result-box .val{font-family:var(--mono);font-size:15px;color:var(--text)}
+    .result-box .lbl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+    .result-box.good .val{color:var(--accent2)}
+    .result-box.bad .val{color:var(--danger)}
+    .delay-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-family:var(--mono);font-size:12px}
+    .delay-old{color:var(--muted);text-decoration:line-through;min-width:50px}
+    .delay-arrow{color:var(--accent)}
+    .delay-new{color:var(--accent2);min-width:50px;font-weight:600}
+    .delay-delta{color:var(--purple);font-size:10px}
+    .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .stat-box{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:8px 10px}
+    .stat-box .val{font-family:var(--mono);font-size:16px;color:var(--text)}
+    .stat-box .lbl{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+    .rmse-wrap{margin-top:10px}
+    .rmse-label{display:flex;justify-content:space-between;margin-bottom:4px}
+    .rmse-label span{font-family:var(--mono);font-size:11px}
+    .rmse-label .key{color:var(--muted)}
+    .rmse-label .rmse-val{color:var(--accent2)}
+    .bar-track{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+    .bar-fill{height:100%;border-radius:2px;background:var(--accent2);transition:width .3s,background .3s}
+    .tab-content{display:none}
+    .tab-content.active{display:flex;flex-direction:column;height:100%}
+    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg2);
+      border:1px solid var(--border);border-radius:6px;padding:10px 20px;font-family:var(--mono);font-size:12px;
+      color:var(--accent2);z-index:100;opacity:0;transition:opacity .3s;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+    .toast.show{opacity:1}
+    .toast.error{color:var(--danger);border-color:var(--danger)}
+    .check-row{display:flex;align-items:center;gap:8px;margin:6px 0;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer}
+    .check-row input{accent-color:var(--accent)}
+    #log{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.6;max-height:120px;overflow-y:auto;padding:10px 16px;flex-shrink:0}
+    #log .entry{border-bottom:1px solid var(--border);padding:2px 0}
+    #log .ts{color:var(--accent);margin-right:6px}
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">UWB<span>//</span>CALIB</div>
+    <div class="tabs">
+      <div class="tab active" data-tab="live" onclick="switchTab('live')">Live</div>
+      <div class="tab" data-tab="calib" onclick="switchTab('calib')">Calibrate</div>
+    </div>
+    <div class="status-dot" id="dot"></div>
+    <div id="status-text">DISCONNECTED</div>
+    <div class="header-right">
+      <div class="hstat"><div class="val" id="h-fps">0</div><div class="lbl">PKT/S</div></div>
+      <div class="hstat"><div class="val" id="h-total">0</div><div class="lbl">FIXES</div></div>
+    </div>
+  </header>
+
+  <div id="map-wrap">
+    <canvas id="canvas"></canvas>
+    <div class="bracket tl"></div><div class="bracket tr"></div>
+    <div class="bracket bl"></div><div class="bracket br"></div>
+  </div>
+
+  <aside>
+    <!-- ════ LIVE SIDEBAR ════ -->
+    <div id="sidebar-live" class="tab-content active">
+      <div class="panel">
+        <div class="panel-title">Position</div>
+        <div class="coord-row"><div class="coord-axis">X</div><div class="coord-val" id="px">—</div><div class="coord-unit">m</div></div>
+        <div class="coord-row"><div class="coord-axis">Y</div><div class="coord-val" id="py">—</div><div class="coord-unit">m</div></div>
+        <div class="rmse-wrap">
+          <div class="rmse-label"><span class="key">RMSE</span><span class="rmse-val" id="rmse-val">—</span></div>
+          <div class="bar-track"><div class="bar-fill" id="rmse-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Anchor Distances</div>
+        <div class="anchor-row"><div class="anchor-id">A1</div><div class="anchor-dist-bar"><div class="anchor-dist-fill" id="d0-bar"></div></div><div class="anchor-dist-val" id="d0-val">— m</div></div>
+        <div class="anchor-row"><div class="anchor-id">A2</div><div class="anchor-dist-bar"><div class="anchor-dist-fill" id="d1-bar"></div></div><div class="anchor-dist-val" id="d1-val">— m</div></div>
+        <div class="anchor-row"><div class="anchor-id">A3</div><div class="anchor-dist-bar"><div class="anchor-dist-fill" id="d2-bar"></div></div><div class="anchor-dist-val" id="d2-val">— m</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Session</div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="val" id="s-minx">—</div><div class="lbl">Min X</div></div>
+          <div class="stat-box"><div class="val" id="s-maxx">—</div><div class="lbl">Max X</div></div>
+          <div class="stat-box"><div class="val" id="s-miny">—</div><div class="lbl">Min Y</div></div>
+          <div class="stat-box"><div class="val" id="s-maxy">—</div><div class="lbl">Max Y</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Controls</div>
+        <div class="controls">
+          <button class="btn active" id="btn-trail" onclick="toggleTrail()">Trail ON</button>
+          <button class="btn" onclick="clearTrail()">Clear</button>
+          <button class="btn" onclick="exportCSV()">CSV</button>
+        </div>
+        <div class="ws-row">
+          <input class="input" id="ws-url" value="ws://localhost:8765">
+          <button class="btn" onclick="reconnect()">Connect</button>
+        </div>
+      </div>
+      <div id="log"></div>
+    </div>
+
+    <!-- ════ CALIBRATE SIDEBAR ════ -->
+    <div id="sidebar-calib" class="tab-content">
+      <div class="panel">
+        <div class="panel-title">Anchor Discovery</div>
+        <div class="disc-row"><div class="disc-dot" id="disc-a1"></div><div class="disc-label">A1</div><div class="disc-ip" id="ip-a1">waiting…</div></div>
+        <div class="disc-row"><div class="disc-dot" id="disc-a2"></div><div class="disc-label">A2</div><div class="disc-ip" id="ip-a2">waiting…</div></div>
+        <div class="disc-row"><div class="disc-dot" id="disc-a3"></div><div class="disc-label">A3</div><div class="disc-ip" id="ip-a3">waiting…</div></div>
+        <div style="margin-top:6px"><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">DELAYS: </span><span id="delays-display" style="font-family:var(--mono);font-size:10px;color:var(--purple)">—</span></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Capture</div>
+        <div style="margin-bottom:8px"><span style="font-family:var(--mono);font-size:11px;color:var(--muted)">SELECTED: </span><span id="selected-point" style="font-family:var(--mono);font-size:13px;color:var(--accent)">Click a grid point</span></div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+          <label style="font-family:var(--mono);font-size:10px;color:var(--muted)">N=</label>
+          <input class="input" id="capture-n" type="number" value="200" min="10" max="2000" style="width:70px">
+          <button class="btn primary" id="btn-capture" onclick="toggleCapture()" disabled>Capture</button>
+        </div>
+        <div class="progress-wrap" id="capture-progress" style="display:none">
+          <div class="progress-bar"><div class="progress-fill" id="cap-fill"></div></div>
+          <div class="progress-label"><span id="cap-count">0 / 200</span><span id="cap-pct">0%</span></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px">CAPTURED POINTS: <span id="n-captured" style="color:var(--accent2)">0</span></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Optimizer</div>
+        <label class="check-row"><input type="checkbox" id="opt-positions"> Co-optimize anchor positions</label>
+        <div class="controls" style="margin-top:8px">
+          <button class="btn primary" id="btn-optimize" onclick="runOptimize()" disabled>Optimize</button>
+          <button class="btn success" id="btn-apply" onclick="applyDelays()" disabled>Apply</button>
+        </div>
+      </div>
+      <div class="panel" id="results-panel" style="display:none">
+        <div class="panel-title">Results</div>
+        <div class="result-grid" style="margin-bottom:10px">
+          <div class="result-box bad"><div class="val" id="rmse-before">—</div><div class="lbl">RMSE Before</div></div>
+          <div class="result-box good"><div class="val" id="rmse-after">—</div><div class="lbl">RMSE After</div></div>
+          <div class="result-box bad"><div class="val" id="maxe-before">—</div><div class="lbl">Max Err Before</div></div>
+          <div class="result-box good"><div class="val" id="maxe-after">—</div><div class="lbl">Max Err After</div></div>
+        </div>
+        <div class="panel-title" style="margin-top:6px">New Delays</div>
+        <div id="delay-results"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Session</div>
+        <div class="controls">
+          <button class="btn" onclick="saveSession()">Save</button>
+          <button class="btn danger" onclick="clearSession()">Clear All</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  // ══════════════════════════════════════════════════════════
+  //  CONFIG
+  // ══════════════════════════════════════════════════════════
+  const SQRT3 = Math.sqrt(3);
+  const ANCHORS = [
+    { id:'A1', x: 0.0,    y: 2.0   },
+    { id:'A2', x:-SQRT3,  y:-1.0   },
+    { id:'A3', x: SQRT3,  y:-1.0   },
+  ];
+  const WS = { xMin:-1, xMax:1, yMin:-1, yMax:1 };
+  const CALIB_PTS = [
+    [-1,1],[0,1],[1,1],[-1,0],[0,0],[1,0],[-1,-1],[0,-1],[1,-1]
+  ];
+  const MAX_DIST = 5.0, MAX_RMSE = 0.5, TRAIL_MAX = 300;
+
+  // ══════════════════════════════════════════════════════════
+  //  STATE
+  // ══════════════════════════════════════════════════════════
+  let activeTab = 'live';
+  let trail = [], showTrail = true, lastData = null, lastTime = 0;
+  let totalFixes = 0, pktCount = 0, pktRate = 0, ws = null;
+  let history = [];
+  let stats = { minX:Infinity, maxX:-Infinity, minY:Infinity, maxY:-Infinity };
+
+  // Calibration state
+  let selectedPt = null;       // {x, y, idx}
+  let capturing = false;
+  let capturedSet = new Set();  // indices of captured grid points
+  let capturedData = [];        // CalibPoint summaries from server
+  let optimizeResult = null;
+  let anchorStatus = {};        // from server status messages
+
+  // View
+  let view = { scale:80, ox:0, oy:0 };
+  let staleTimer = null;
+
+  // ══════════════════════════════════════════════════════════
+  //  CANVAS SETUP
+  // ══════════════════════════════════════════════════════════
+  const wrap = document.getElementById('map-wrap');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = wrap.clientWidth;
+    canvas.height = wrap.clientHeight;
+    autoFit();
+    draw();
+  }
+  function autoFit() {
+    const pad = 80;
+    const xs = ANCHORS.map(a=>a.x), ys = ANCHORS.map(a=>a.y);
+    const mnX = Math.min(...xs), mxX = Math.max(...xs);
+    const mnY = Math.min(...ys), mxY = Math.max(...ys);
+    const rX = (mxX-mnX)||2, rY = (mxY-mnY)||2, m = 1.5;
+    const sX = (canvas.width-pad*2)/(rX*m), sY = (canvas.height-pad*2)/(rY*m);
+    view.scale = Math.min(sX, sY);
+    view.ox = canvas.width/2 - ((mnX+mxX)/2)*view.scale;
+    view.oy = canvas.height/2 + ((mnY+mxY)/2)*view.scale;
+  }
+  new ResizeObserver(resize).observe(wrap);
+
+  function wx(x){ return x*view.scale+view.ox; }
+  function wy(y){ return y*-view.scale+view.oy; }
+
+  // ══════════════════════════════════════════════════════════
+  //  TAB SWITCHING
+  // ══════════════════════════════════════════════════════════
+  function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
+    document.getElementById('sidebar-live').classList.toggle('active', tab==='live');
+    document.getElementById('sidebar-calib').classList.toggle('active', tab==='calib');
+    draw();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  DRAWING — shared
+  // ══════════════════════════════════════════════════════════
+  function drawBase() {
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Workspace rectangle
+    const wsX = wx(WS.xMin), wsY = wy(WS.yMax);
+    const wsW = (WS.xMax-WS.xMin)*view.scale, wsH = (WS.yMax-WS.yMin)*view.scale;
+    ctx.beginPath(); ctx.rect(wsX, wsY, wsW, wsH);
+    ctx.strokeStyle = 'rgba(0,255,157,0.30)'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(0,255,157,0.04)'; ctx.fill();
+
+    // Triangle outline
+    ctx.beginPath();
+    ctx.moveTo(wx(ANCHORS[0].x), wy(ANCHORS[0].y));
+    ctx.lineTo(wx(ANCHORS[1].x), wy(ANCHORS[1].y));
+    ctx.lineTo(wx(ANCHORS[2].x), wy(ANCHORS[2].y));
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,157,0,0.18)'; ctx.lineWidth = 1;
+    ctx.setLineDash([3,5]); ctx.stroke(); ctx.setLineDash([]);
+
+    // Anchors
+    ANCHORS.forEach(a => {
+      const ax = wx(a.x), ay = wy(a.y);
+      ctx.beginPath(); ctx.arc(ax, ay, 14, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(255,157,0,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.arc(ax, ay, 6, 0, Math.PI*2);
+      ctx.fillStyle = '#ff9d00'; ctx.fill();
+      ctx.fillStyle = '#ff9d00'; ctx.font = '11px "Share Tech Mono"';
+      ctx.textAlign = 'center'; ctx.fillText(a.id, ax, ay-20);
+      ctx.font = '10px "Share Tech Mono"'; ctx.fillStyle = 'rgba(255,157,0,0.5)';
+      ctx.fillText(`(${a.x.toFixed(1)}, ${a.y.toFixed(1)})`, ax, ay+26);
+    });
+  }
+
+  function drawTag() {
+    if (!lastData) return;
+    const ex = lastData.ex !== undefined ? lastData.ex : lastData.x;
+    const ey = lastData.ey !== undefined ? lastData.ey : lastData.y;
+    const tx = wx(ex), ty = wy(ey);
+    const isStale = (Date.now()-lastTime) > 3000;
+    const col = isStale ? '#ff9d00' : '#00d4ff';
+
+    // Range circles
+    if (activeTab === 'live') {
+      const ds = [lastData.d0, lastData.d1, lastData.d2];
+      ANCHORS.forEach((a,i) => {
+        if (ds[i] == null) return;
+        ctx.beginPath(); ctx.arc(wx(a.x), wy(a.y), ds[i]*view.scale, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(255,157,0,0.12)'; ctx.lineWidth = 1;
+        ctx.setLineDash([4,6]); ctx.stroke(); ctx.setLineDash([]);
+      });
+    }
+
+    // Trail
+    if (showTrail && trail.length > 1 && activeTab === 'live') {
+      ctx.beginPath();
+      ctx.moveTo(wx(trail[0].x), wy(trail[0].y));
+      for (let i=1; i<trail.length; i++) ctx.lineTo(wx(trail[i].x), wy(trail[i].y));
+      ctx.strokeStyle = 'rgba(0,212,255,0.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // Crosshair
+    const W = canvas.width, H = canvas.height;
+    ctx.strokeStyle = col+'55'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(tx,0); ctx.lineTo(tx,H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,ty); ctx.lineTo(W,ty); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Glow + dot
+    const grad = ctx.createRadialGradient(tx, ty, 0, tx, ty, 30);
+    grad.addColorStop(0, col+'66'); grad.addColorStop(1, col+'00');
+    ctx.fillStyle = grad; ctx.fillRect(tx-30, ty-30, 60, 60);
+    ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.beginPath(); ctx.arc(tx, ty, 8, 0, Math.PI*2);
+    ctx.strokeStyle = col+'88'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Label
+    ctx.font = '11px "Share Tech Mono"'; ctx.textAlign = 'left';
+    ctx.fillStyle = col;
+    ctx.fillText(`(${ex.toFixed(3)}, ${ey.toFixed(3)})`, tx+14, ty-8);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  DRAWING — calibrate tab extras
+  // ══════════════════════════════════════════════════════════
+  function drawCalibGrid() {
+    CALIB_PTS.forEach((pt, i) => {
+      const cx = wx(pt[0]), cy = wy(pt[1]);
+      const isSel = selectedPt && selectedPt.idx === i;
+      const isCap = capturedSet.has(i);
+
+      // Outer ring
+      ctx.beginPath(); ctx.arc(cx, cy, isSel?16:12, 0, Math.PI*2);
+      if (isCap) {
+        ctx.fillStyle = 'rgba(0,255,157,0.12)';
+        ctx.strokeStyle = '#00ff9d'; ctx.lineWidth = 2;
+      } else if (isSel) {
+        ctx.fillStyle = 'rgba(0,212,255,0.12)';
+        ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2;
+      } else {
+        ctx.fillStyle = 'rgba(200,218,232,0.06)';
+        ctx.strokeStyle = 'rgba(200,218,232,0.3)'; ctx.lineWidth = 1;
+      }
+      ctx.fill(); ctx.stroke();
+
+      // Inner dot
+      ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI*2);
+      ctx.fillStyle = isCap ? '#00ff9d' : isSel ? '#00d4ff' : 'rgba(200,218,232,0.5)';
+      ctx.fill();
+
+      // Checkmark for captured
+      if (isCap) {
+        ctx.font = '10px "Share Tech Mono"'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#00ff9d';
+        ctx.fillText('✓', cx, cy+24);
+      }
+
+      // Label
+      ctx.font = '9px "Share Tech Mono"'; ctx.textAlign = 'center';
+      ctx.fillStyle = isSel ? '#00d4ff' : 'rgba(200,218,232,0.4)';
+      ctx.fillText(`(${pt[0]},${pt[1]})`, cx, cy - (isSel?20:16));
+    });
+
+    // Error vectors if we have optimization results
+    if (optimizeResult && optimizeResult.per_point_errors_after) {
+      // Draw error vectors from captured points (before vs after)
+      // We draw small error magnitude labels near each captured point
+      let idx = 0;
+      capturedData.forEach(cp => {
+        const cx = wx(cp.x_true), cy = wy(cp.y_true);
+        // Mean measured position (before)
+        if (cp.mean_x !== undefined) {
+          const mx = wx(cp.mean_x), my = wy(cp.mean_y);
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(mx, my);
+          ctx.strokeStyle = 'rgba(255,61,90,0.6)'; ctx.lineWidth = 1.5;
+          ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI*2);
+          ctx.fillStyle = '#ff3d5a'; ctx.fill();
+        }
+        idx++;
+      });
+    }
+  }
+
+  function draw() {
+    drawBase();
+    if (activeTab === 'calib') drawCalibGrid();
+    drawTag();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  CANVAS CLICK (calibrate tab — select grid point)
+  // ══════════════════════════════════════════════════════════
+  canvas.addEventListener('click', e => {
+    if (activeTab !== 'calib' || capturing) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let best = null, bestD = 25; // 25px hit radius
+    CALIB_PTS.forEach((pt, i) => {
+      const d = Math.hypot(wx(pt[0])-mx, wy(pt[1])-my);
+      if (d < bestD) { bestD = d; best = { x:pt[0], y:pt[1], idx:i }; }
+    });
+    selectedPt = best;
+    document.getElementById('selected-point').textContent =
+      best ? `(${best.x}, ${best.y})` : 'Click a grid point';
+    document.getElementById('btn-capture').disabled = !best;
+    draw();
+  });
+
+  // ══════════════════════════════════════════════════════════
+  //  WEBSOCKET
+  // ══════════════════════════════════════════════════════════
+  function connectWS() {
+    const url = document.getElementById('ws-url').value;
+    if (ws) { try { ws.close(); } catch(_){} }
+    ws = new WebSocket(url);
+    ws.onopen = () => {
+      setStatus('live', 'CONNECTED');
+      addLog('WebSocket connected');
+      wsSend({ cmd:'get_status' });
+    };
+    ws.onclose = () => { setStatus('', 'DISCONNECTED'); addLog('Disconnected'); };
+    ws.onerror = () => setStatus('error', 'ERROR');
+    ws.onmessage = e => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch(_) { return; }
+      handleMsg(msg);
+    };
+  }
+  function reconnect() { connectWS(); }
+  function wsSend(obj) { if (ws && ws.readyState===1) ws.send(JSON.stringify(obj)); }
+
+  function setStatus(cls, txt) {
+    const dot = document.getElementById('dot');
+    dot.className = 'status-dot ' + cls;
+    document.getElementById('status-text').textContent = txt;
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  MESSAGE HANDLER
+  // ══════════════════════════════════════════════════════════
+  function handleMsg(msg) {
+    switch(msg.type) {
+      case 'position': handlePosition(msg); break;
+      case 'status': handleStatus(msg); break;
+      case 'capture_progress': handleCaptureProgress(msg); break;
+      case 'capture_done': handleCaptureDone(msg); break;
+      case 'optimize_result': handleOptResult(msg); break;
+      case 'apply_result': handleApplyResult(msg); break;
+      case 'session_saved': showToast(`Session saved: ${msg.path}`); break;
+      case 'error': showToast(msg.msg, true); addLog('ERR: '+msg.msg); break;
+    }
+  }
+
+  function handlePosition(d) {
+    lastData = d; lastTime = Date.now();
+    pktCount++; totalFixes++;
+
+    const ex = d.ex !== undefined ? d.ex : d.x;
+    const ey = d.ey !== undefined ? d.ey : d.y;
+
+    // Trail
+    trail.push({ x:ex, y:ey });
+    if (trail.length > TRAIL_MAX) trail.shift();
+
+    // Stats
+    stats.minX = Math.min(stats.minX, ex);
+    stats.maxX = Math.max(stats.maxX, ex);
+    stats.minY = Math.min(stats.minY, ey);
+    stats.maxY = Math.max(stats.maxY, ey);
+
+    // Live sidebar updates
+    document.getElementById('px').textContent = ex.toFixed(3);
+    document.getElementById('py').textContent = ey.toFixed(3);
+    document.getElementById('h-total').textContent = totalFixes;
+
+    // Distances
+    if (d.d0 != null) {
+      document.getElementById('d0-val').textContent = d.d0.toFixed(3)+' m';
+      document.getElementById('d0-bar').style.width = Math.min(100,d.d0/MAX_DIST*100)+'%';
+    }
+    if (d.d1 != null) {
+      document.getElementById('d1-val').textContent = d.d1.toFixed(3)+' m';
+      document.getElementById('d1-bar').style.width = Math.min(100,d.d1/MAX_DIST*100)+'%';
+    }
+    if (d.d2 != null) {
+      document.getElementById('d2-val').textContent = d.d2.toFixed(3)+' m';
+      document.getElementById('d2-bar').style.width = Math.min(100,d.d2/MAX_DIST*100)+'%';
+    }
+
+    // RMSE (distance from raw to EKF)
+    if (d.x != null && d.ex != null) {
+      const rmse = Math.sqrt((d.x-d.ex)**2+(d.y-d.ey)**2);
+      document.getElementById('rmse-val').textContent = (rmse*100).toFixed(1)+' cm';
+      const pct = Math.min(100, rmse/MAX_RMSE*100);
+      const bar = document.getElementById('rmse-bar');
+      bar.style.width = pct+'%';
+      bar.style.background = rmse < 0.1 ? 'var(--accent2)' : rmse < 0.3 ? 'var(--warn)' : 'var(--danger)';
+    }
+
+    // Session stats
+    if (stats.minX < Infinity) {
+      document.getElementById('s-minx').textContent = stats.minX.toFixed(2);
+      document.getElementById('s-maxx').textContent = stats.maxX.toFixed(2);
+      document.getElementById('s-miny').textContent = stats.minY.toFixed(2);
+      document.getElementById('s-maxy').textContent = stats.maxY.toFixed(2);
+    }
+
+    // Stale timer
+    clearTimeout(staleTimer);
+    setStatus('live', 'LIVE');
+    staleTimer = setTimeout(() => setStatus('stale', 'STALE'), 3000);
+
+    history.push(d);
+    draw();
+  }
+
+  function handleStatus(msg) {
+    anchorStatus = msg.anchors || {};
+    ['A1','A2','A3'].forEach(id => {
+      const a = anchorStatus[id] || {};
+      const dot = document.getElementById('disc-'+id.toLowerCase());
+      const ip = document.getElementById('ip-'+id.toLowerCase());
+      if (a.ip) { dot.classList.add('found'); ip.textContent = a.ip; }
+      else { dot.classList.remove('found'); ip.textContent = 'waiting…'; }
+    });
+    // Delay display
+    const dStr = ['A1','A2','A3'].map(id => {
+      const v = (anchorStatus[id]||{}).delay;
+      return v != null ? v : '?';
+    }).join(' / ');
+    document.getElementById('delays-display').textContent = dStr;
+
+    // Capture state
+    const cap = msg.capture || {};
+    const sess = msg.session || {};
+    document.getElementById('n-captured').textContent = sess.n_points || 0;
+    document.getElementById('btn-optimize').disabled = (sess.n_points||0) < 3;
+
+    if (!cap.active && capturing) {
+      capturing = false;
+      document.getElementById('btn-capture').textContent = 'Capture';
+      document.getElementById('capture-progress').style.display = 'none';
+    }
+  }
+
+  function handleCaptureProgress(msg) {
+    const pct = Math.min(100, (msg.n/msg.target)*100);
+    document.getElementById('cap-fill').style.width = pct+'%';
+    document.getElementById('cap-count').textContent = `${msg.n} / ${msg.target}`;
+    document.getElementById('cap-pct').textContent = pct.toFixed(0)+'%';
+  }
+
+  function handleCaptureDone(msg) {
+    capturing = false;
+    document.getElementById('btn-capture').textContent = 'Capture';
+    document.getElementById('capture-progress').style.display = 'none';
+    showToast(`Captured (${msg.point.x}, ${msg.point.y}) — ${msg.n} samples`);
+    addLog(`Captured (${msg.point.x},${msg.point.y}) n=${msg.n}`);
+
+    // Mark point as captured
+    const idx = CALIB_PTS.findIndex(p => p[0]===msg.point.x && p[1]===msg.point.y);
+    if (idx >= 0) capturedSet.add(idx);
+    capturedData.push({
+      x_true: msg.point.x, y_true: msg.point.y,
+      mean_x: msg.mean_x, mean_y: msg.mean_y,
+      mean_d0: msg.mean_d0, mean_d1: msg.mean_d1, mean_d2: msg.mean_d2,
+    });
+
+    wsSend({ cmd:'get_status' });
+    draw();
+  }
+
+  function handleOptResult(msg) {
+    optimizeResult = msg;
+    document.getElementById('results-panel').style.display = 'block';
+    document.getElementById('rmse-before').textContent = (msg.rmse_before*100).toFixed(2)+' cm';
+    document.getElementById('rmse-after').textContent = (msg.rmse_after*100).toFixed(2)+' cm';
+    document.getElementById('maxe-before').textContent = (msg.max_error_before*100).toFixed(2)+' cm';
+    document.getElementById('maxe-after').textContent = (msg.max_error_after*100).toFixed(2)+' cm';
+
+    // Delay rows
+    const cont = document.getElementById('delay-results');
+    cont.innerHTML = '';
+    ['A1','A2','A3'].forEach(id => {
+      const oldV = (msg.initial_delays||{})[id] || '?';
+      const newV = (msg.new_delays||{})[id] || '?';
+      const delta = typeof newV==='number' && typeof oldV==='number' ? newV-oldV : 0;
+      cont.innerHTML += `<div class="delay-row">
+        <span class="anchor-id">${id}</span>
+        <span class="delay-old">${oldV}</span>
+        <span class="delay-arrow">→</span>
+        <span class="delay-new">${newV}</span>
+        <span class="delay-delta">(${delta>=0?'+':''}${delta})</span>
+      </div>`;
+    });
+
+    document.getElementById('btn-apply').disabled = false;
+    showToast(`Optimize done: RMSE ${(msg.rmse_before*100).toFixed(1)}→${(msg.rmse_after*100).toFixed(1)} cm`);
+    addLog(`Optimize: RMSE ${(msg.rmse_before*100).toFixed(1)}→${(msg.rmse_after*100).toFixed(1)} cm`);
+    draw();
+  }
+
+  function handleApplyResult(msg) {
+    const r = msg.responses || {};
+    const parts = Object.entries(r).map(([k,v]) => `${k}:${v}`);
+    showToast('Applied: ' + parts.join(', '));
+    addLog('Applied delays: ' + parts.join(', '));
+    wsSend({ cmd:'get_status' });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  CALIBRATION ACTIONS
+  // ══════════════════════════════════════════════════════════
+  function toggleCapture() {
+    if (capturing) {
+      wsSend({ cmd:'stop_capture' });
+      capturing = false;
+      document.getElementById('btn-capture').textContent = 'Capture';
+      document.getElementById('capture-progress').style.display = 'none';
+    } else if (selectedPt) {
+      const n = parseInt(document.getElementById('capture-n').value) || 200;
+      wsSend({ cmd:'start_capture', point:{ x:selectedPt.x, y:selectedPt.y }, n:n });
+      capturing = true;
+      document.getElementById('btn-capture').textContent = 'Stop';
+      document.getElementById('capture-progress').style.display = 'block';
+      document.getElementById('cap-fill').style.width = '0%';
+      document.getElementById('cap-count').textContent = `0 / ${n}`;
+      document.getElementById('cap-pct').textContent = '0%';
+    }
+  }
+  function runOptimize() {
+    const optPos = document.getElementById('opt-positions').checked;
+    wsSend({ cmd:'optimize', optimize_positions: optPos });
+    showToast('Running optimizer…');
+  }
+  function applyDelays() {
+    if (!optimizeResult || !optimizeResult.new_delays) return;
+    wsSend({ cmd:'apply', delays: optimizeResult.new_delays });
+    showToast('Applying delays…');
+  }
+  function saveSession() { wsSend({ cmd:'save_session' }); }
+  function clearSession() {
+    if (!confirm('Clear all captured calibration data?')) return;
+    wsSend({ cmd:'clear_session' });
+    capturedSet.clear(); capturedData = []; optimizeResult = null;
+    document.getElementById('results-panel').style.display = 'none';
+    document.getElementById('btn-apply').disabled = true;
+    draw();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  LIVE TAB CONTROLS
+  // ══════════════════════════════════════════════════════════
+  function toggleTrail() {
+    showTrail = !showTrail;
+    const btn = document.getElementById('btn-trail');
+    btn.textContent = showTrail ? 'Trail ON' : 'Trail OFF';
+    btn.classList.toggle('active', showTrail);
+    draw();
+  }
+  function clearTrail() { trail = []; stats={minX:Infinity,maxX:-Infinity,minY:Infinity,maxY:-Infinity}; draw(); }
+  function exportCSV() {
+    if (!history.length) return;
+    let csv = 'x,y,ex,ey,d0,d1,d2\n';
+    history.forEach(d => {
+      csv += `${d.x},${d.y},${d.ex||''},${d.ey||''},${d.d0||''},${d.d1||''},${d.d2||''}\n`;
+    });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `uwb_${Date.now()}.csv`; a.click();
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  HELPERS
+  // ══════════════════════════════════════════════════════════
+  function addLog(msg) {
+    const log = document.getElementById('log');
+    const t = new Date().toLocaleTimeString();
+    log.innerHTML += `<div class="entry"><span class="ts">${t}</span>${msg}</div>`;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  let toastTimer = null;
+  function showToast(msg, isErr) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (isErr ? ' error' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  // Packet rate counter
+  setInterval(() => {
+    pktRate = pktCount; pktCount = 0;
+    document.getElementById('h-fps').textContent = pktRate;
+  }, 1000);
+
+  // ── Init ─────────────────────────────────────────────────
+  connectWS();
+  </script>
+</body>
+</html>

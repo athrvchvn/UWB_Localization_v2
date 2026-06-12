@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UWB Tag Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #080c10;
+      --bg2: #0d1219;
+      --bg3: #111820;
+      --border: #1e2d3d;
+      --accent: #00d4ff;
+      --accent2: #00ff9d;
+      --warn: #ff9d00;
+      --danger: #ff3d5a;
+      --text: #c8dae8;
+      --muted: #4a6070;
+      --mono: 'Share Tech Mono', monospace;
+      --sans: 'Barlow', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      grid-template-columns: 1fr 280px;
+      gap: 1px;
+      background-color: var(--border);
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      grid-column: 1 / -1;
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    .logo span {
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+
+    .status-dot.live {
+      background: var(--accent2);
+      box-shadow: 0 0 8px var(--accent2);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.stale {
+      background: var(--warn);
+      box-shadow: 0 0 6px var(--warn);
+    }
+
+    .status-dot.error {
+      background: var(--danger);
+    }
+
+    #status-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .hstat {
+      text-align: right;
+    }
+
+    .hstat .val {
+      font-family: var(--mono);
+      font-size: 15px;
+      color: var(--accent);
+    }
+
+    .hstat .lbl {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    /* ── Map canvas area ── */
+    #map-wrap {
+      background: var(--bg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    /* Grid overlay on canvas */
+    #map-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* Corner brackets */
+    .bracket {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-color: var(--accent);
+      border-style: solid;
+      opacity: 0.5;
+    }
+
+    .bracket.tl {
+      top: 12px;
+      left: 12px;
+      border-width: 1px 0 0 1px;
+    }
+
+    .bracket.tr {
+      top: 12px;
+      right: 12px;
+      border-width: 1px 1px 0 0;
+    }
+
+    .bracket.bl {
+      bottom: 12px;
+      left: 12px;
+      border-width: 0 0 1px 1px;
+    }
+
+    .bracket.br {
+      bottom: 12px;
+      right: 12px;
+      border-width: 0 1px 1px 0;
+    }
+
+    /* Scale bar */
+    #scalebar {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      pointer-events: none;
+    }
+
+    #scalebar-line {
+      height: 2px;
+      background: var(--muted);
+      position: relative;
+    }
+
+    #scalebar-line::before,
+    #scalebar-line::after {
+      content: '';
+      position: absolute;
+      top: -3px;
+      width: 1px;
+      height: 8px;
+      background: var(--muted);
+    }
+
+    #scalebar-line::before {
+      left: 0;
+    }
+
+    #scalebar-line::after {
+      right: 0;
+    }
+
+    #scalebar-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* ── Sidebar ── */
+    aside {
+      background: var(--bg2);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .panel {
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+    }
+
+    .panel-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    /* Position readout */
+    .coord-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .coord-axis {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      width: 14px;
+    }
+
+    .coord-val {
+      font-family: var(--mono);
+      font-size: 28px;
+      color: var(--accent);
+      line-height: 1;
+      letter-spacing: -1px;
+      transition: color 0.2s;
+    }
+
+    .coord-unit {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* RMSE bar */
+    .rmse-wrap {
+      margin-top: 10px;
+    }
+
+    .rmse-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .rmse-label span {
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .rmse-label .key {
+      color: var(--muted);
+    }
+
+    .rmse-label .rmse-val {
+      color: var(--accent2);
+    }
+
+    .bar-track {
+      height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--accent2);
+      transition: width 0.3s, background 0.3s;
+    }
+
+    /* Anchor distances */
+    .anchor-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .anchor-id {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--bg);
+      background: var(--warn);
+      border-radius: 3px;
+      padding: 1px 5px;
+      flex-shrink: 0;
+    }
+
+    .anchor-dist-bar {
+      flex: 1;
+      height: 3px;
+      background: var(--bg3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .anchor-dist-fill {
+      height: 100%;
+      background: var(--warn);
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .anchor-dist-val {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      min-width: 52px;
+      text-align: right;
+    }
+
+    /* Stats */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stat-box {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+
+    .stat-box .val {
+      font-family: var(--mono);
+      font-size: 16px;
+      color: var(--text);
+    }
+
+    .stat-box .lbl {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Trail toggle + clear */
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 1px;
+      padding: 5px 10px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      text-transform: uppercase;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn.active {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+
+    /* WS connect input */
+    .ws-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .ws-input {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 5px 8px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .ws-input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Log */
+    #log {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.6;
+      max-height: 120px;
+      overflow-y: auto;
+      padding: 10px 16px;
+      flex-shrink: 0;
+    }
+
+    #log .entry {
+      border-bottom: 1px solid var(--border);
+      padding: 2px 0;
+    }
+
+    #log .ts {
+      color: var(--accent);
+      margin-right: 6px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="logo">UWB<span>//</span>TRACKER</div>
+    <div class="status-dot" id="dot"></div>
+    <div id="status-text">DISCONNECTED</div>
+    <div class="header-right">
+      <div class="hstat">
+        <div class="val" id="h-fps">0</div>
+        <div class="lbl">PKT/S</div>
+      </div>
+      <div class="hstat">
+        <div class="val" id="h-total">0</div>
+        <div class="lbl">FIXES</div>
+      </div>
+      <div class="hstat">
+        <div class="val" id="h-age">—</div>
+        <div class="lbl">AGE MS</div>
+      </div>
+    </div>
+  </header>
+
+  <div id="map-wrap">
+    <canvas id="canvas"></canvas>
+    <div class="bracket tl"></div>
+    <div class="bracket tr"></div>
+    <div class="bracket bl"></div>
+    <div class="bracket br"></div>
+    <div id="scalebar">
+      <div id="scalebar-line" style="width:80px"></div>
+      <div id="scalebar-label">1.0 m</div>
+    </div>
+  </div>
+
+  <aside>
+    <!-- Position -->
+    <div class="panel">
+      <div class="panel-title">Position</div>
+      <div class="coord-row">
+        <div class="coord-axis">X</div>
+        <div class="coord-val" id="px">—</div>
+        <div class="coord-unit">m</div>
+      </div>
+      <div class="coord-row">
+        <div class="coord-axis">Y</div>
+        <div class="coord-val" id="py">—</div>
+        <div class="coord-unit">m</div>
+      </div>
+      <div class="rmse-wrap">
+        <div class="rmse-label">
+          <span class="key">RMSE</span>
+          <span class="rmse-val" id="rmse-val">—</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" id="rmse-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Anchor distances -->
+    <div class="panel">
+      <div class="panel-title">Anchor distances</div>
+      <div class="anchor-row">
+        <div class="anchor-id">A1</div>
+        <div class="anchor-dist-bar">
+          <div class="anchor-dist-fill" id="d0-bar" style="width:0%"></div>
+        </div>
+        <div class="anchor-dist-val" id="d0-val">— m</div>
+      </div>
+      <div class="anchor-row">
+        <div class="anchor-id">A2</div>
+        <div class="anchor-dist-bar">
+          <div class="anchor-dist-fill" id="d1-bar" style="width:0%"></div>
+        </div>
+        <div class="anchor-dist-val" id="d1-val">— m</div>
+      </div>
+      <div class="anchor-row">
+        <div class="anchor-id">A3</div>
+        <div class="anchor-dist-bar">
+          <div class="anchor-dist-fill" id="d2-bar" style="width:0%"></div>
+        </div>
+        <div class="anchor-dist-val" id="d2-val">— m</div>
+      </div>
+    </div>
+
+    <!-- Session stats -->
+    <div class="panel">
+      <div class="panel-title">Session</div>
+      <div class="stat-grid">
+        <div class="stat-box">
+          <div class="val" id="s-minx">—</div>
+          <div class="lbl">Min X</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="s-maxx">—</div>
+          <div class="lbl">Max X</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="s-miny">—</div>
+          <div class="lbl">Min Y</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="s-maxy">—</div>
+          <div class="lbl">Max Y</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="panel">
+      <div class="panel-title">Controls</div>
+      <div class="controls">
+        <button class="btn active" id="btn-trail" onclick="toggleTrail()">Trail ON</button>
+        <button class="btn" onclick="clearTrail()">Clear trail</button>
+        <button class="btn" onclick="resetView()">Reset view</button>
+        <button class="btn" id="btn-csv" onclick="exportCSV()">Export CSV</button>
+      </div>
+      <div class="ws-row">
+        <input class="ws-input" id="ws-url" value="ws://localhost:8765" placeholder="ws://localhost:8765">
+        <button class="btn" onclick="reconnect()">Connect</button>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div id="log"></div>
+  </aside>
+
+  <script>
+    // ── Config ────────────────────────────────────────────────
+    const ANCHOR_COORDS = [
+      { id: 'A1', x: 0.0, y: 0.0 },
+      { id: 'A2', x: 0.0, y: 2.0 },   // matches ESP32 anchor_matrix
+      { id: 'A3', x: 2.0, y: 0.0 },   // matches ESP32 anchor_matrix
+    ];
+    const TRAIL_MAX = 300;
+    const MAX_DIST = 15.0;   // for distance bars (meters)
+    const MAX_RMSE = 0.5;    // for RMSE bar (meters)
+
+    // ── State ─────────────────────────────────────────────────
+    let trail = [];
+    let showTrail = true;
+    let lastData = null;
+    let lastTime = 0;
+    let totalFixes = 0;
+    let ws = null;
+    let pktCount = 0;
+    let pktRate = 0;
+    let history = [];        // for CSV export
+
+    let stats = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+
+    // View transform (pan/zoom)
+    let view = { scale: 80, ox: 0, oy: 0 };
+    let dragging = false, dragStart = null, viewAtDrag = null;
+    let staleTimer = null;
+
+    // ── Canvas setup ──────────────────────────────────────────
+    const wrap = document.getElementById('map-wrap');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = wrap.clientWidth;
+      canvas.height = wrap.clientHeight;
+      // Auto-fit anchors into view on resize
+      autoFit();
+      draw();
+    }
+
+    function autoFit() {
+      const padding = 80;
+      const xs = ANCHOR_COORDS.map(a => a.x);
+      const ys = ANCHOR_COORDS.map(a => a.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const rangeX = (maxX - minX) || 2;
+      const rangeY = (maxY - minY) || 2;
+      const margin = 1.5;
+      const scaleX = (canvas.width - padding * 2) / (rangeX * margin);
+      const scaleY = (canvas.height - padding * 2) / (rangeY * margin);
+      view.scale = Math.min(scaleX, scaleY);
+      view.ox = canvas.width / 2 - ((minX + maxX) / 2) * view.scale;
+      view.oy = canvas.height / 2 + ((minY + maxY) / 2) * view.scale;
+    }
+
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+
+    // ── World <-> screen ──────────────────────────────────────
+    function wx(x) { return x * view.scale + view.ox; }
+    function wy(y) { return y * -view.scale + view.oy; }
+    function sw(x) { return (x - view.ox) / view.scale; }
+    function sh(y) { return (y - view.oy) / -view.scale; }
+
+    // ── Draw ──────────────────────────────────────────────────
+    function draw() {
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+
+      // Anchor range circles (subtle)
+      if (lastData) {
+        const dists = [lastData.d0, lastData.d1, lastData.d2];
+        ANCHOR_COORDS.forEach((a, i) => {
+          ctx.beginPath();
+          ctx.arc(wx(a.x), wy(a.y), dists[i] * view.scale, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255,157,0,0.10)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 6]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        });
+      }
+
+      // Trail
+      if (showTrail && trail.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(wx(trail[0].x), wy(trail[0].y));
+        for (let i = 1; i < trail.length; i++) {
+          ctx.lineTo(wx(trail[i].x), wy(trail[i].y));
+        }
+        ctx.strokeStyle = 'rgba(0,212,255,0.25)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Fade dots along trail
+        const step = Math.max(1, Math.floor(trail.length / 40));
+        for (let i = 0; i < trail.length; i += step) {
+          const alpha = (i / trail.length) * 0.5;
+          ctx.beginPath();
+          ctx.arc(wx(trail[i].x), wy(trail[i].y), 2, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(0,212,255,${alpha})`;
+          ctx.fill();
+        }
+      }
+
+      // Anchors
+      ANCHOR_COORDS.forEach(a => {
+        const ax = wx(a.x), ay = wy(a.y);
+        // Outer ring
+        ctx.beginPath();
+        ctx.arc(ax, ay, 14, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,157,0,0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Inner dot
+        ctx.beginPath();
+        ctx.arc(ax, ay, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff9d00';
+        ctx.fill();
+        // Label
+        ctx.fillStyle = '#ff9d00';
+        ctx.font = '11px "Share Tech Mono"';
+        ctx.textAlign = 'center';
+        ctx.fillText(a.id, ax, ay - 20);
+        ctx.font = '10px "Share Tech Mono"';
+        ctx.fillStyle = 'rgba(255,157,0,0.5)';
+        ctx.fillText(`(${a.x.toFixed(1)}, ${a.y.toFixed(1)})`, ax, ay + 26);
+      });
+
+      // Tag
+      if (lastData) {
+        const tx = wx(lastData.ex), ty = wy(lastData.ey);  // use EKF position
+        const isStale = (Date.now() - lastTime) > 3000;
+        const col = isStale ? '#ff9d00' : '#00d4ff';
+
+        // Crosshair
+        ctx.strokeStyle = col + '55';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(tx, 0); ctx.lineTo(tx, H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Pulse ring
+        const age = (Date.now() - lastTime);
+        if (age < 600) {
+          const r = 12 + (age / 600) * 22;
+          const a = 1 - age / 600;
+          ctx.beginPath();
+          ctx.arc(tx, ty, r, 0, Math.PI * 2);
+          ctx.strokeStyle = col + Math.floor(a * 255).toString(16).padStart(2, '0');
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        // Tag dot
+        ctx.beginPath();
+        ctx.arc(tx, ty, 8, 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 14;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Coord label near tag
+        const lx = tx + 14, ly = ty - 14;
+        ctx.font = '11px "Share Tech Mono"';
+        ctx.fillStyle = col;
+        ctx.textAlign = 'left';
+        ctx.fillText(`EKF: ${lastData.ex.toFixed(3)}, ${lastData.ey.toFixed(3)}`, lx, ly);
+      }
+
+      // Axes labels
+      ctx.font = '10px "Share Tech Mono"';
+      ctx.fillStyle = 'rgba(74,96,112,0.7)';
+      ctx.textAlign = 'left';
+      ctx.fillText('X →', W - 32, wy(0) + 14);
+      ctx.textAlign = 'center';
+      ctx.fillText('Y ↑', wx(0) - 14, 18);
+
+      updateScalebar();
+    }
+
+    function updateScalebar() {
+      // Show a 1m scale bar
+      const px = view.scale;
+      document.getElementById('scalebar-line').style.width = px + 'px';
+      document.getElementById('scalebar-label').textContent = '1.0 m';
+    }
+
+    // Animation loop
+    let animId;
+    function loop() {
+      draw();
+      animId = requestAnimationFrame(loop);
+    }
+    loop();
+
+    // ── UI updates ────────────────────────────────────────────
+    function updateSidebar(d) {
+      document.getElementById('px').textContent = d.ex.toFixed(3);  // EKF X
+      document.getElementById('py').textContent = d.ey.toFixed(3);  // EKF Y
+
+      const rmse = d.rmse;
+      document.getElementById('rmse-val').textContent = rmse.toFixed(4) + ' m';
+      const rmseBar = document.getElementById('rmse-bar');
+      const rmsePct = Math.min(100, (rmse / MAX_RMSE) * 100);
+      rmseBar.style.width = rmsePct + '%';
+      rmseBar.style.background = rmse < 0.1 ? '#00ff9d' : rmse < 0.25 ? '#ff9d00' : '#ff3d5a';
+
+      const dists = [d.d0, d.d1, d.d2];
+      dists.forEach((dist, i) => {
+        document.getElementById(`d${i}-val`).textContent = dist.toFixed(3) + ' m';
+        document.getElementById(`d${i}-bar`).style.width = Math.min(100, (dist / MAX_DIST) * 100) + '%';
+      });
+
+      // Stats — track EKF position extents
+      if (d.ex < stats.minX) stats.minX = d.ex;
+      if (d.ex > stats.maxX) stats.maxX = d.ex;
+      if (d.ey < stats.minY) stats.minY = d.ey;
+      if (d.ey > stats.maxY) stats.maxY = d.ey;
+      document.getElementById('s-minx').textContent = stats.minX.toFixed(3);
+      document.getElementById('s-maxx').textContent = stats.maxX.toFixed(3);
+      document.getElementById('s-miny').textContent = stats.minY === Infinity ? '—' : stats.minY.toFixed(3);  // fixed typo
+      document.getElementById('s-maxy').textContent = stats.maxY.toFixed(3);
+
+      totalFixes++;
+      document.getElementById('h-total').textContent = totalFixes;
+      document.getElementById('h-age').textContent = '0';
+    }
+
+    // Age counter
+    setInterval(() => {
+      if (lastTime) {
+        const age = Date.now() - lastTime;
+        document.getElementById('h-age').textContent = age;
+        const dot = document.getElementById('dot');
+        if (age > 5000) { dot.className = 'status-dot error'; document.getElementById('status-text').textContent = 'SIGNAL LOST'; }
+        else if (age > 2000) { dot.className = 'status-dot stale'; document.getElementById('status-text').textContent = 'STALE'; }
+      }
+    }, 200);
+
+    // Packet rate
+    setInterval(() => {
+      pktRate = pktCount;
+      pktCount = 0;
+      document.getElementById('h-fps').textContent = pktRate;
+    }, 1000);
+
+    // ── WebSocket ─────────────────────────────────────────────
+    function connect(url) {
+      if (ws) ws.close();
+      log(`Connecting to ${url}…`);
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        document.getElementById('dot').className = 'status-dot live';
+        document.getElementById('status-text').textContent = 'LIVE';
+        log('Connected');
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          lastData = d;
+          lastTime = Date.now();
+          pktCount++;
+          if (showTrail) {
+            trail.push({ x: d.ex, y: d.ey });  // trail follows EKF position
+            if (trail.length > TRAIL_MAX) trail.shift();
+          }
+          history.push({ t: new Date().toISOString(), ...d });
+          updateSidebar(d);
+        } catch { }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('dot').className = 'status-dot error';
+        document.getElementById('status-text').textContent = 'DISCONNECTED';
+        log('Disconnected — retrying in 3s…');
+        setTimeout(() => connect(document.getElementById('ws-url').value), 3000);
+      };
+
+      ws.onerror = () => log('WebSocket error');
+    }
+
+    function reconnect() {
+      connect(document.getElementById('ws-url').value);
+    }
+
+    // ── Controls ──────────────────────────────────────────────
+    function toggleTrail() {
+      showTrail = !showTrail;
+      const btn = document.getElementById('btn-trail');
+      btn.textContent = showTrail ? 'Trail ON' : 'Trail OFF';
+      btn.className = showTrail ? 'btn active' : 'btn';
+    }
+
+    function clearTrail() { trail = []; }
+
+    function resetView() { autoFit(); }
+
+    function exportCSV() {
+      if (!history.length) return;
+      const header = 'timestamp,x,y,ex,ey,rmse,d0,d1,d2\n';
+      const rows = history.map(r =>
+        `${r.t},${r.x},${r.y},${r.ex},${r.ey},${r.rmse},${r.d0},${r.d1},${r.d2}`
+      ).join('\n');
+      const blob = new Blob([header + rows], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `uwb_track_${Date.now()}.csv`;
+      a.click();
+      log(`Exported ${history.length} rows`);
+    }
+
+    // ── Pan / zoom ────────────────────────────────────────────
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const mx = e.offsetX, my = e.offsetY;
+      const wx0 = sw(mx), wy0 = sh(my);
+      view.scale *= factor;
+      view.ox = mx - wx0 * view.scale;
+      view.oy = my - wy0 * -view.scale;
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', e => {
+      dragging = true;
+      dragStart = { x: e.clientX, y: e.clientY };
+      viewAtDrag = { ox: view.ox, oy: view.oy };
+      canvas.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      view.ox = viewAtDrag.ox + (e.clientX - dragStart.x);
+      view.oy = viewAtDrag.oy + (e.clientY - dragStart.y);
+    });
+    window.addEventListener('mouseup', () => {
+      dragging = false;
+      canvas.style.cursor = 'default';
+    });
+
+    // ── Log ───────────────────────────────────────────────────
+    function log(msg) {
+      const el = document.getElementById('log');
+      const ts = new Date().toTimeString().slice(0, 8);
+      el.innerHTML = `<div class="entry"><span class="ts">${ts}</span>${msg}</div>` + el.innerHTML;
+      if (el.children.length > 30) el.removeChild(el.lastChild);
+    }
+
+    // ── Boot ──────────────────────────────────────────────────
+    autoFit();
+    connect(document.getElementById('ws-url').value);
+  </script>
+</body>
+
+</html>
